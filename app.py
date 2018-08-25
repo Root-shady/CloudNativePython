@@ -10,6 +10,7 @@ Flask app for Cloud Native Project
 """
 from flask import Flask, request
 from flask import jsonify, make_response, abort
+from time import strftime, gmtime
 import json
 import sqlite3
 
@@ -166,6 +167,76 @@ def upd_user(user):
                 cursor.execute("""UPDATE users set {0}=? where id=?""".format(i), (user[i], user['id']))
                 conn.commit()
         return True
+
+@app.route('/api/v2/tweets', methods=['GET'])
+def get_tweets():
+    return list_tweets()
+
+def list_tweets():
+    conn = sqlite3.connect('./database.db')
+    print("Opened database successfully")
+    api_list = []
+    cursor = conn.cursor()
+    cursor.execute("SELECT username, body, tweet_time, id FROM tweets")
+    data = cursor.fetchall()
+    for row in data:
+        tweet = {}
+        tweet['username'] = row[0]
+        tweet['body'] = row[1]
+        tweet['tweet_time'] = row[2]
+        tweet['id'] = row[3]
+        api_list.append(tweet)
+    conn.close()
+    return jsonify({'tweets_list': api_list})
+
+@app.route('/api/v2/tweets', methods=['POST'])
+def add_tweets():
+    user_tweet = {}
+    if not request.json \
+        or not 'username' in request.json\
+        or not 'body' in request.json:
+        abort(400)
+    user_tweet['username'] = request.json['username']
+    user_tweet['body'] = request.json['body']
+    user_tweet['created_at'] = strftime("%Y-%m-%dT%H:%M:%SZ", gmtime())
+    return jsonify({'status': add_tweets(user_tweet)}), 200
+
+def add_tweets(new_tweet):
+    conn = sqlite3.connect('./database.db')
+    print("Opened database successfully")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE username=?", (new_tweet['username'],))
+    data = cursor.fetchall()
+    if len(data) == 0:
+        abort(404)
+    else:
+        cursor.execute("INSERT INTO tweets (username, body, tweet_time) \
+            values(?,?,?)", (new_tweet['username'], new_tweet['body'], \
+            new_tweet['created_at']))
+        conn.commit()
+        return True
+
+@app.route('/api/v2/tweets/<int:id>', methods=['GET'])
+def get_tweet(id):
+    return list_tweet(id)
+
+def list_tweet(id):
+    conn = sqlite3.connect('./database.db')
+    print("Opened database successfully")
+    api_list = []
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM tweets where id = ?", (id,))
+    data = cursor.fetchall()
+    if len(data) == 0:
+        abort(404)
+    else:
+        user = {}
+        user['id'] = data[0][0]
+        user['username'] = data[0][1]
+        user['body'] = data[0][2]
+        user['tweet_time'] = data[0][3]
+        conn.close()
+        return jsonify(user)
 
 
 if __name__ == "__main__":
